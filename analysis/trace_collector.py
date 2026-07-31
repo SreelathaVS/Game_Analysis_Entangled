@@ -1,25 +1,21 @@
 import csv
-import json
 import os
 import random
-from typing import Any, Dict, List, Tuple
-from entangled_engine import EntangledGameSimulation, coord_str, direction_name
+from entangled_engine import EntangledGameSimulation, GreedyAgent, coord_str, direction_name
 
-
-def format_board_matrix_flattened(grid: List[List[int]]) -> str:
+def format_board_matrix_flattened(grid):
   rows_str = ["[" + " ".join(f"{val:2d}" for val in row) + "]" for row in grid]
   return " | ".join(rows_str)
 
 
 def run_batch_and_collect_traces(
-    num_games: int = 10000,
-    target_score: int = 3,
-    p1_type: str = "random",
-    p2_type: str = "random",
-    output_base_dir: str = "outputs",
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-
-  # Generate clean nested directory path: outputs/target_score_3/random_vs_random/
+    num_games=1000,
+    target_score=3,
+    p1_type="random",
+    p2_type="random",
+    output_base_dir="outputs",
+    force_overwrite=False,
+):
   matchup_dir = os.path.join(
       output_base_dir, f"target_score_{target_score}", f"{p1_type}_vs_{p2_type}"
   )
@@ -49,13 +45,12 @@ def run_batch_and_collect_traces(
     while True:
       game_over, winner, reason = sim.check_game_over(check_stuck=True)
       if game_over:
-        res = {
+        batch_results.append({
             "winner": winner,
             "reason": reason,
             "total_moves": sim.move_count,
             "final_scores": sim.scores.copy(),
-        }
-        batch_results.append(res)
+        })
         if reason not in captured_category_traces:
           captured_category_traces[reason] = (seed, turn_logs)
         break
@@ -68,14 +63,20 @@ def run_batch_and_collect_traces(
           else sim.board.p2_pieces_coords
       )
 
-      valid_pairs = sim.board.activePairs(current_p)
-      chosen_pair = random.choice(valid_pairs)
-      pid1, pid2 = chosen_pair[0], chosen_pair[1]
+      if current_p == "p1" and p1_type == "greedy":
+        chosen_pair, move1, move2 = GreedyAgent.select_best_move(sim)
+      elif current_p == "p2" and p2_type == "greedy":
+        chosen_pair, move1, move2 = GreedyAgent.select_best_move(sim)
+      else:
+        valid_pairs = sim.board.activePairs(current_p)
+        chosen_pair = random.choice(valid_pairs)
+        move1, move2 = None, None
 
+      pid1, pid2 = chosen_pair[0], chosen_pair[1]
       orig_r1, orig_c1 = coords_dict[pid1]
       orig_r2, orig_c2 = coords_dict[pid2]
 
-      early_end, winner, reason = sim.execute_turn(chosen_pair)
+      early_end, winner, reason = sim.execute_turn(chosen_pair, move1, move2)
 
       new_r1, new_c1 = coords_dict[pid1]
       new_r2, new_c2 = coords_dict[pid2]
@@ -105,18 +106,16 @@ def run_batch_and_collect_traces(
       turn_num += 1
 
       if early_end:
-        res = {
+        batch_results.append({
             "winner": winner,
             "reason": reason,
             "total_moves": sim.move_count,
             "final_scores": sim.scores.copy(),
-        }
-        batch_results.append(res)
+        })
         if reason not in captured_category_traces:
           captured_category_traces[reason] = (seed, turn_logs)
         break
 
-  # Export Category Traces to CSVs
   fieldnames = [
       "turn",
       "player",
@@ -133,12 +132,16 @@ def run_batch_and_collect_traces(
 
   for cat in categories:
     if cat in captured_category_traces:
-      seed, logs = captured_category_traces[cat]
       filepath = os.path.join(traces_dir, f"single_game_{cat}.csv")
-      with open(filepath, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for log in logs:
-          writer.writerow(log)
+      if not os.path.exists(filepath) or force_overwrite:
+        seed, logs = captured_category_traces[cat]
+        with open(filepath, "w", newline="") as f:
+          writer = csv.DictWriter(f, fieldnames=fieldnames)
+          writer.writeheader()
+          for log in logs:
+            writer.writerow(log)
+        print(f"  [New Trace Created] Saved: {filepath}")
+      else:
+        print(f"  [Skipped Existing] File already present: {filepath}")
 
   return batch_results, captured_category_traces

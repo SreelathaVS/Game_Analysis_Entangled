@@ -1,6 +1,6 @@
 import random
 from .grid_setup import GridSetup
-
+from .greedy_agent import GreedyAgent
 
 class EntangledGameSimulation:
 
@@ -132,7 +132,7 @@ class EntangledGameSimulation:
 
     return new_points
 
-  def execute_turn(self, chosen_pair):
+  def execute_turn(self, chosen_pair, move1=None, move2=None):
     pid1, pid2 = chosen_pair[0], chosen_pair[1]
     coords_dict = (
         self.board.p1_pieces_coords
@@ -140,60 +140,60 @@ class EntangledGameSimulation:
         else self.board.p2_pieces_coords
     )
 
-    # --- STEP 1: PIECE 1 ACTION ---
-    p1_moves = self.board.get_valid_moves_for_piece(
-        pid1, pid2, self.current_player
-    )
     orig_r1, orig_c1 = coords_dict[pid1]
 
-    guaranteed_p1_moves = []
-    for mr, mc in p1_moves:
-      self.board.grid[orig_r1][orig_c1] = 0
-      self.board.grid[mr][mc] = pid1
-      coords_dict[pid1] = (mr, mc)
-
-      p2_moves_after = self.board.get_valid_moves_for_piece(
-          pid2, None, self.current_player
+    # 1. Handle Piece 1 Destination
+    if move1 is None:
+      p1_moves = self.board.get_valid_moves_for_piece(
+          pid1, pid2, self.current_player
       )
-      if p2_moves_after:
-        guaranteed_p1_moves.append((mr, mc))
+      # Guarantee Piece 1 leaves at least 1 valid move for Piece 2
+      guaranteed_p1_moves = []
+      for mr, mc in p1_moves:
+        self.board.grid[orig_r1][orig_c1] = 0
+        self.board.grid[mr][mc] = pid1
+        coords_dict[pid1] = (mr, mc)
 
-      self.board.grid[mr][mc] = 0
-      self.board.grid[orig_r1][orig_c1] = pid1
-      coords_dict[pid1] = (orig_r1, orig_c1)
+        if self.board.get_valid_moves_for_piece(pid2, None, self.current_player):
+          guaranteed_p1_moves.append((mr, mc))
 
-    if not guaranteed_p1_moves:
-      raise ValueError(
-          f"execute_turn received pair {chosen_pair} with no legal sequence."
+        self.board.grid[mr][mc] = 0
+        self.board.grid[orig_r1][orig_c1] = pid1
+        coords_dict[pid1] = (orig_r1, orig_c1)
+
+      move1 = (
+          random.choice(guaranteed_p1_moves)
+          if guaranteed_p1_moves
+          else random.choice(p1_moves)
       )
 
-    move1 = random.choice(guaranteed_p1_moves)
-
+    # Apply Piece 1 Move
     self.board.grid[orig_r1][orig_c1] = 0
     self.board.grid[move1[0]][move1[1]] = pid1
     coords_dict[pid1] = move1
 
-    # --- STEP 2: PIECE 2 ACTION ---
-    p2_moves = self.board.get_valid_moves_for_piece(
-        pid2, None, self.current_player
-    )
-    move2 = random.choice(p2_moves)
-
+    # 2. Handle Piece 2 Destination
     orig_r2, orig_c2 = coords_dict[pid2]
+    if move2 is None:
+      p2_moves = self.board.get_valid_moves_for_piece(
+          pid2, None, self.current_player
+      )
+      move2 = random.choice(p2_moves)
+
+    # Apply Piece 2 Move
     self.board.grid[orig_r2][orig_c2] = 0
     self.board.grid[move2[0]][move2[1]] = pid2
     coords_dict[pid2] = move2
 
-    # --- SCORING EVALUATION AT TURN END ---
-    p1_new_pts, p2_new_pts = self.check_scoring_for_move()
-    self.scores["p1"] += p1_new_pts
-    self.scores["p2"] += p2_new_pts
+    # 3. Update Scores & Game State
+    p1_pts, p2_pts = self.check_scoring_for_move()
+    self.scores["p1"] += p1_pts
+    self.scores["p2"] += p2_pts
 
     self.move_count += 1
     self.switch_player()
 
-    game_over, winner, reason = self.check_game_over(check_stuck=True)
-    return game_over, winner, reason
+    return self.check_game_over(check_stuck=True)
 
   def run_simulation(self):
     while True:
@@ -207,16 +207,14 @@ class EntangledGameSimulation:
         }
 
       valid_pairs = self.board.activePairs(self.current_player)
-      current_type = (
-          self.p1_type if self.current_player == "p1" else self.p2_type
-      )
+      current_type = self.p1_type if self.current_player == "p1" else self.p2_type
 
       if current_type == "random":
         chosen_pair = random.choice(valid_pairs)
+      elif current_type == "greedy":        
+        chosen_pair = GreedyAgent.select_best_pair(self)
       else:
-        raise NotImplementedError(
-            f"Player type '{current_type}' is not implemented in this build."
-        )
+        raise NotImplementedError(f"Strategy '{current_type}' is not supported.")
 
       early_end, winner, reason = self.execute_turn(chosen_pair)
 
