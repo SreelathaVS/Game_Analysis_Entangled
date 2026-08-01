@@ -42,6 +42,10 @@ class EntangledGameSimulation:
     return False, None, None
 
   def check_scoring_for_move(self):
+    """Evaluates and awards blocking points for both players after a turn.
+
+    Returns a tuple of (p1_points_gained, p2_points_gained).
+    """
     p1_blocking_pts = self.evaluate_blocking_points(
         pair_owner="p2", blocker_player="p1"
     )
@@ -51,6 +55,9 @@ class EntangledGameSimulation:
     return p1_blocking_pts, p2_blocking_pts
 
   def evaluate_blocking_points(self, pair_owner, blocker_player):
+    # 1. ALWAYS initialize new_points at the top!
+    new_points = 0
+
     pair_coords = (
         self.board.p1_pieces_coords
         if pair_owner == "p1"
@@ -65,7 +72,11 @@ class EntangledGameSimulation:
     pair_pids = list(pair_coords.keys())
     blocker_pids = list(blocker_coords.keys())
 
-    new_points = 0
+    if not hasattr(self, "scored_interceptions"):
+      self.scored_interceptions = set()
+
+    # --- STEP 1: FIND ALL CURRENTLY ACTIVE ALIGNMENT STATE TUPLES ---
+    currently_active_states = set()
 
     for i in range(len(pair_pids)):
       for j in range(i + 1, len(pair_pids)):
@@ -125,10 +136,22 @@ class EntangledGameSimulation:
               (r2, c2),
               (br, bc),
           )
+          currently_active_states.add(state_tuple)
 
-          if state_tuple not in self.scored_interceptions:
-            self.scored_interceptions.add(state_tuple)
-            new_points += 1
+    # --- STEP 2: PRUNE BROKEN ALIGNMENTS FROM MEMORY ---
+    past_tuples_to_remove = []
+    for state in self.scored_interceptions:
+      if state[2] in blocker_pids and state not in currently_active_states:
+        past_tuples_to_remove.append(state)
+
+    for old_state in past_tuples_to_remove:
+      self.scored_interceptions.remove(old_state)
+
+    # --- STEP 3: AWARD POINTS FOR NEW/RE-FORMED ALIGNMENTS ---
+    for state_tuple in currently_active_states:
+      if state_tuple not in self.scored_interceptions:
+        self.scored_interceptions.add(state_tuple)
+        new_points += 1
 
     return new_points
 
