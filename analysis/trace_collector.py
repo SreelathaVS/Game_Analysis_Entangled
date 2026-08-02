@@ -1,7 +1,7 @@
 import csv
 import os
 import random
-from entangled_engine import EntangledGameSimulation, GreedyAgent, coord_str, direction_name
+from entangled_engine import EntangledGameSimulation, GreedyAgent, MinimaxAgent, coord_str, direction_name
 
 def format_board_matrix_flattened(grid):
   rows_str = ["[" + " ".join(f"{val:2d}" for val in row) + "]" for row in grid]
@@ -35,6 +35,8 @@ def run_batch_and_collect_traces(
 
   for seed in range(1, num_games + 1):
     random.seed(seed)
+    if(seed%100==0):
+      print("running ", seed,"+")
     sim = EntangledGameSimulation(
         p1_type=p1_type, p2_type=p2_type, target_score=target_score
     )
@@ -62,14 +64,24 @@ def run_batch_and_collect_traces(
           if current_p == "p1"
           else sim.board.p2_pieces_coords
       )
-
+      # Determine agent decision based on player type
       if current_p == "p1" and p1_type == "greedy":
         chosen_pair, move1, move2 = GreedyAgent.select_best_move(sim)
       elif current_p == "p2" and p2_type == "greedy":
         chosen_pair, move1, move2 = GreedyAgent.select_best_move(sim)
+
+      elif current_p == "p1" and p1_type == "minimax":
+        chosen_pair, move1, move2 = MinimaxAgent.select_best_move(sim)
+      elif current_p == "p2" and p2_type == "minimax":
+        chosen_pair, move1, move2 = MinimaxAgent.select_best_move(sim)
+
       else:
+        # Default to Random play
         valid_pairs = sim.board.activePairs(current_p)
-        chosen_pair = random.choice(valid_pairs)
+        if valid_pairs:
+          chosen_pair = random.choice(valid_pairs)
+        else:
+          chosen_pair = None
         move1, move2 = None, None
 
       pid1, pid2 = chosen_pair[0], chosen_pair[1]

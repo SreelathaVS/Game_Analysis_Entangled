@@ -235,7 +235,7 @@ class EntangledGameSimulation:
       if current_type == "random":
         chosen_pair = random.choice(valid_pairs)
       elif current_type == "greedy":        
-        chosen_pair = GreedyAgent.select_best_pair(self)
+        chosen_pair = GreedyAgent.select_best_move(self)
       else:
         raise NotImplementedError(f"Strategy '{current_type}' is not supported.")
 
