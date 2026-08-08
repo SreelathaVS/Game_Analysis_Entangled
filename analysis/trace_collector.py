@@ -1,7 +1,14 @@
 import csv
 import os
 import random
-from entangled_engine import EntangledGameSimulation, GreedyAgent, MinimaxAgent, coord_str, direction_name
+from entangled_engine import (
+    EntangledGameSimulation,
+    GreedyAgent,
+    MinimaxAgent,
+    coord_str,
+    direction_name,
+)
+
 
 def format_board_matrix_flattened(grid):
   rows_str = ["[" + " ".join(f"{val:2d}" for val in row) + "]" for row in grid]
@@ -13,6 +20,11 @@ def run_batch_and_collect_traces(
     target_score=3,
     p1_type="random",
     p2_type="random",
+    depth=2,
+    top_k=4,
+    pre_filter_cap=20,
+    score_weight=1000,
+    mobility_weight=10,
     output_base_dir="outputs",
     force_overwrite=False,
 ):
@@ -35,8 +47,9 @@ def run_batch_and_collect_traces(
 
   for seed in range(1, num_games + 1):
     random.seed(seed)
-    if(seed%100==0):
-      print("running ", seed,"+")
+    #if seed % 100 == 0:
+    #  print("running ", seed, "+")
+
     sim = EntangledGameSimulation(
         p1_type=p1_type, p2_type=p2_type, target_score=target_score
     )
@@ -45,6 +58,7 @@ def run_batch_and_collect_traces(
     turn_num = 1
 
     while True:
+      # 1. Start-of-turn check
       game_over, winner, reason = sim.check_game_over(check_stuck=True)
       if game_over:
         batch_results.append({
@@ -58,36 +72,47 @@ def run_batch_and_collect_traces(
         break
 
       current_p = sim.current_player
-      agent_type = sim.p1_type if current_p == "p1" else sim.p2_type
+      active_agent_type = p1_type if current_p == "p1" else p2_type
+
       coords_dict = (
           sim.board.p1_pieces_coords
           if current_p == "p1"
           else sim.board.p2_pieces_coords
       )
-      # Determine agent decision based on player type
-      if current_p == "p1" and p1_type == "greedy":
-        chosen_pair, move1, move2 = GreedyAgent.select_best_move(sim)
-      elif current_p == "p2" and p2_type == "greedy":
+
+      # 2. Clean, Symmetrical Agent Dispatch Logic
+      if active_agent_type == "greedy":
         chosen_pair, move1, move2 = GreedyAgent.select_best_move(sim)
 
-      elif current_p == "p1" and p1_type == "minimax":
-        chosen_pair, move1, move2 = MinimaxAgent.select_best_move(sim)
-      elif current_p == "p2" and p2_type == "minimax":
-        chosen_pair, move1, move2 = MinimaxAgent.select_best_move(sim)
+      elif active_agent_type == "minimax":
+        chosen_pair, move1, move2 = MinimaxAgent.select_best_move(
+            sim,
+            depth=depth,
+            top_k=top_k,
+            pre_filter_cap=pre_filter_cap,
+            score_weight=score_weight,
+            mobility_weight=mobility_weight,
+        )
 
       else:
-        # Default to Random play
-        valid_pairs = sim.board.activePairs(current_p)
-        if valid_pairs:
-          chosen_pair = random.choice(valid_pairs)
+        # Uniform Random Agent with Full Candidate Generation
+        candidates = MinimaxAgent._generate_full_turn_candidates(
+            sim, current_p
+        )
+        if candidates:
+          chosen_pair, move1, move2 = random.choice(candidates)
         else:
-          chosen_pair = None
-        move1, move2 = None, None
+          chosen_pair, move1, move2 = None, None, None
+
+      if chosen_pair is None:
+        # No moves possible for active player
+        break
 
       pid1, pid2 = chosen_pair[0], chosen_pair[1]
       orig_r1, orig_c1 = coords_dict[pid1]
       orig_r2, orig_c2 = coords_dict[pid2]
 
+      # 3. Execute Turn
       early_end, winner, reason = sim.execute_turn(chosen_pair, move1, move2)
 
       new_r1, new_c1 = coords_dict[pid1]
@@ -99,7 +124,7 @@ def run_batch_and_collect_traces(
       turn_logs.append({
           "turn": turn_num,
           "player": current_p,
-          "agent": agent_type,
+          "agent": active_agent_type,
           "moved_pair": str(list(chosen_pair)),
           "p1_move": (
               f"{coord_str(orig_r1, orig_c1)} -> {coord_str(new_r1, new_c1)}"

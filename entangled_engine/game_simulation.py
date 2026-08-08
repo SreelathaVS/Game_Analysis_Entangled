@@ -1,7 +1,7 @@
 import random
 from .grid_setup import GridSetup
 from .greedy_agent import GreedyAgent
-
+from .minimax_agent import MinimaxAgent
 class EntangledGameSimulation:
 
   def __init__(self, p1_type="random", p2_type="random", target_score=5):
@@ -232,15 +232,16 @@ class EntangledGameSimulation:
       valid_pairs = self.board.activePairs(self.current_player)
       current_type = self.p1_type if self.current_player == "p1" else self.p2_type
 
+
       if current_type == "random":
         chosen_pair = random.choice(valid_pairs)
-      elif current_type == "greedy":        
-        chosen_pair = GreedyAgent.select_best_move(self)
+        move1, move2 = None, None
+      elif current_type == "greedy":
+          chosen_pair, move1, move2 = GreedyAgent.select_best_move(self)
       else:
-        raise NotImplementedError(f"Strategy '{current_type}' is not supported.")
+          raise NotImplementedError(f"Strategy '{current_type}' is not supported.")
 
-      early_end, winner, reason = self.execute_turn(chosen_pair)
-
+      early_end, winner, reason = self.execute_turn(chosen_pair, move1, move2)
       if early_end:
         return {
             "winner": winner,

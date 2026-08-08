@@ -1,20 +1,20 @@
 {
     "total_games": 10000,
-    "p1_win_rate": 0.4696,
-    "p2_win_rate": 0.4768,
-    "draw_rate": 0.0536,
-    "avg_game_length": 25.1481,
-    "std_game_length": 10.563672012610008,
-    "median_game_length": 25.0,
+    "p1_win_rate": 0.4817,
+    "p2_win_rate": 0.4695,
+    "draw_rate": 0.0488,
+    "avg_game_length": 19.8574,
+    "std_game_length": 9.566695628063016,
+    "median_game_length": 19.0,
     "min_game_length": 4,
-    "max_game_length": 75,
-    "stuck_game_ratio": 0.1179,
-    "score_game_ratio": 0.8285,
+    "max_game_length": 73,
+    "stuck_game_ratio": 0.1817,
+    "score_game_ratio": 0.7695,
     "category_counts": {
-        "draw_simultaneous_target": 536,
-        "p1_win_score": 4115,
-        "p1_win_opponent_stuck": 581,
-        "p2_win_score": 4170,
-        "p2_win_opponent_stuck": 598
+        "draw_simultaneous_target": 488,
+        "p1_win_score": 3914,
+        "p1_win_opponent_stuck": 903,
+        "p2_win_score": 3781,
+        "p2_win_opponent_stuck": 914
     }
 }

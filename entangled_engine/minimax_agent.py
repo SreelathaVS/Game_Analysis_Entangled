@@ -3,24 +3,7 @@ import random
 
 
 class MinimaxAgent:
-  """True minimax with alpha-beta pruning and smart move ordering.
-
-  Move ordering ranks each candidate by simulating it once and scoring the
-  result -- searching stronger-looking moves first lets alpha-beta prune
-  more aggressively. The key implementation detail: each candidate is
-  simulated EXACTLY ONCE (that one simulation produces both its ranking
-  score and the post-move state used by the search below it). An earlier
-  version simulated every candidate once to rank it, then simulated the
-  surviving top_k candidates AGAIN inside the search loop -- doubling cost
-  everywhere, and since ranking happened before trimming, it paid for the
-  ENTIRE unfiltered candidate list at every node of the tree (not just
-  top_k), which is what made large batches effectively never finish.
-
-  pre_filter_cap bounds worst-case cost further: if a position has an
-  unusually large number of raw candidates, a random subset is taken
-  BEFORE the (now single-pass) ranking simulation runs, so cost per node
-  stays bounded regardless of how rich branching gets in a given game.
-  """
+  """True minimax with alpha-beta pruning and smart move ordering."""
 
   SCORE_WEIGHT = 1000
   MOBILITY_WEIGHT = 10
@@ -28,35 +11,50 @@ class MinimaxAgent:
 
   @staticmethod
   def select_best_move(
-      sim, depth=2, top_k=4, score_weight=1000, mobility_weight=10,
-      pre_filter_cap=15,
+      sim,
+      depth=2,
+      top_k=4,
+      score_weight=1000,
+      mobility_weight=10,
+      pre_filter_cap=20,
   ):
     current_p = sim.current_player
     candidates = MinimaxAgent._generate_full_turn_candidates(sim, current_p)
     if not candidates:
       return None, None, None
 
-    # Rank every (pre-filtered) candidate, then trim to top_k -- same
-    # bound applied at every level, root included. (An earlier attempt at
-    # this fix skipped trimming the root "for thoroughness", which sounds
-    # safe but actually multiplies the cost of the next ply by however
-    # many candidates survive -- worse than the bug it was fixing.)
+    root_player = current_p
+
+    # Rank candidates relative to root_player
     ranked = MinimaxAgent._simulate_and_rank(
-        sim, candidates, current_p, score_weight, mobility_weight,
+        sim,
+        candidates,
+        current_p,
+        root_player,
+        score_weight,
+        mobility_weight,
         pre_filter_cap,
     )
     if top_k is not None and len(ranked) > top_k:
       ranked = ranked[:top_k]
 
-    root_player = current_p
     alpha, beta = -float("inf"), float("inf")
     best_value = -float("inf")
     best_candidates = []
 
     for _heuristic, candidate, sim_copy, game_over, winner in ranked:
       value = MinimaxAgent._minimax_value(
-          sim_copy, depth - 1, alpha, beta, root_player, top_k,
-          score_weight, mobility_weight, pre_filter_cap, game_over, winner,
+          sim_copy,
+          depth - 1,
+          alpha,
+          beta,
+          root_player,
+          top_k,
+          score_weight,
+          mobility_weight,
+          pre_filter_cap,
+          game_over,
+          winner,
       )
 
       if value > best_value:
@@ -71,8 +69,17 @@ class MinimaxAgent:
 
   @staticmethod
   def _minimax_value(
-      sim, depth, alpha, beta, root_player, top_k, score_weight,
-      mobility_weight, pre_filter_cap, game_over=None, winner=None,
+      sim,
+      depth,
+      alpha,
+      beta,
+      root_player,
+      top_k,
+      score_weight,
+      mobility_weight,
+      pre_filter_cap,
+      game_over=None,
+      winner=None,
   ):
     if game_over is None:
       game_over, winner, _ = sim.check_game_over(check_stuck=True)
@@ -92,11 +99,13 @@ class MinimaxAgent:
           sim, root_player, score_weight, mobility_weight
       )
 
-    # Deeper nodes: rank (single simulation per candidate), THEN trim to
-    # top_k -- so cost here is exactly len(pre-filtered candidates)
-    # simulations, never 2x, and never the full raw list once capped.
     ranked = MinimaxAgent._simulate_and_rank(
-        sim, candidates, current_p, score_weight, mobility_weight,
+        sim,
+        candidates,
+        current_p,
+        root_player,
+        score_weight,
+        mobility_weight,
         pre_filter_cap,
     )
     if top_k is not None and len(ranked) > top_k:
@@ -108,8 +117,17 @@ class MinimaxAgent:
       value = -float("inf")
       for _h, _candidate, sim_copy, g_over, w in ranked:
         child_value = MinimaxAgent._minimax_value(
-            sim_copy, depth - 1, alpha, beta, root_player, top_k,
-            score_weight, mobility_weight, pre_filter_cap, g_over, w,
+            sim_copy,
+            depth - 1,
+            alpha,
+            beta,
+            root_player,
+            top_k,
+            score_weight,
+            mobility_weight,
+            pre_filter_cap,
+            g_over,
+            w,
         )
         value = max(value, child_value)
         alpha = max(alpha, value)
@@ -120,8 +138,17 @@ class MinimaxAgent:
       value = float("inf")
       for _h, _candidate, sim_copy, g_over, w in ranked:
         child_value = MinimaxAgent._minimax_value(
-            sim_copy, depth - 1, alpha, beta, root_player, top_k,
-            score_weight, mobility_weight, pre_filter_cap, g_over, w,
+            sim_copy,
+            depth - 1,
+            alpha,
+            beta,
+            root_player,
+            top_k,
+            score_weight,
+            mobility_weight,
+            pre_filter_cap,
+            g_over,
+            w,
         )
         value = min(value, child_value)
         beta = min(beta, value)
@@ -130,12 +157,20 @@ class MinimaxAgent:
       return value
 
   @staticmethod
-  def _simulate_and_rank(sim, candidates, current_p, score_weight,
-                          mobility_weight, pre_filter_cap):
-    """Simulates each candidate ONCE and returns
-    (heuristic, candidate, sim_copy, game_over, winner) tuples, sorted
-    best-first from current_p's own perspective. Callers reuse sim_copy
-    for further recursion instead of re-simulating."""
+  def _simulate_and_rank(
+      sim,
+      candidates,
+      current_p,
+      root_player,
+      score_weight,
+      mobility_weight,
+      pre_filter_cap,
+  ):
+    """Simulates each candidate ONCE and returns ranked tuples.
+
+    Always sorts best-first relative to current_p (MAX player gets high
+    scores first, MIN player gets low scores for root_player first).
+    """
     if pre_filter_cap is not None and len(candidates) > pre_filter_cap:
       candidates = random.sample(candidates, pre_filter_cap)
 
@@ -144,14 +179,21 @@ class MinimaxAgent:
       sim_copy = copy.deepcopy(sim)
       game_over, winner, _ = sim_copy.execute_turn(pair, move1, move2)
       if game_over:
-        heuristic = MinimaxAgent._terminal_value(winner, current_p, 0)
+        heuristic = MinimaxAgent._terminal_value(winner, root_player, 0)
       else:
+        # Score strictly from ROOT_PLAYER'S perspective!
         heuristic = MinimaxAgent._heuristic_value(
-            sim_copy, current_p, score_weight, mobility_weight
+            sim_copy, root_player, score_weight, mobility_weight
         )
-      ranked.append((heuristic, (pair, move1, move2), sim_copy, game_over, winner))
+      ranked.append(
+          (heuristic, (pair, move1, move2), sim_copy, game_over, winner)
+      )
 
-    ranked.sort(key=lambda item: item[0], reverse=True)
+    # If MAX node: sort descending (best for root_player first)
+    # If MIN node: sort ascending (best for opponent / worst for root_player first)
+    is_maximizing = current_p == root_player
+    ranked.sort(key=lambda item: item[0], reverse=is_maximizing)
+
     return ranked
 
   @staticmethod
